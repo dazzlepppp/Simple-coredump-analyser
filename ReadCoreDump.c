@@ -107,6 +107,7 @@ void ReadElfHeader(FILE *fp, Elf32_Ehdr *elfhdr, void *fphdr)
 	fphdr = malloc(sizeof(Elf32_Ehdr));
 	fread(fphdr, sizeof(Elf32_Ehdr),1, fp);
 	
+	
 	int i;
 	for ( i = 0; i < 16; i ++ )
 		elfhdr->e_ident[i] = ((Elf32_Ehdr*)fphdr)->e_ident[i];
