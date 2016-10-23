@@ -18,8 +18,8 @@ typedef struct {
 	Elf32_Half e_machine;
 	Elf32_Word e_version;
 	Elf32_Addr e_entry;
-	Elf32_Off e_phoff;
-	Elf32_Off e_shoff;
+	Elf32_Off  e_phoff;
+	Elf32_Off  e_shoff;
 	Elf32_Word e_flags;
 	Elf32_Half e_ehsize;
 	Elf32_Half e_phentsize;
@@ -44,7 +44,7 @@ typedef struct {
 
 typedef struct {
 	Elf32_Word p_type;
-	Elf32_Off p_offset;
+	Elf32_Off  p_offset;
 	Elf32_Addr p_vaddr;
 	Elf32_Addr p_paddr;
 	Elf32_Word p_filesz;
@@ -53,14 +53,6 @@ typedef struct {
 	Elf32_Word p_align;
 } Elf32_Phdr;
 
-typedef struct {
-	Elf32_Word st_name;
-	Elf32_Addr st_value;
-	Elf32_Word st_size;
-	unsigned char st_info;
-	unsigned char st_other;
-	Elf32_Half st_shndx;
-} Elf32_Sym;
 
 unsigned int u32(char string[])
 {
@@ -68,6 +60,26 @@ unsigned int u32(char string[])
 	unsigned int result = 0;
 	strncpy((char *)&result, string, 4);
 	return result;
+}
+
+unsigned int ForwardTrace(FILE *fp, unsigned int TextStart, unsigned int TextRange, unsigned int StackBase, int EspOffset)
+{
+	int offset = EspOffset;
+	unsigned int value;
+	char buf[5];
+	while ( offset > 0 )
+	{
+		memset(buf, 0, 5);
+		fseek(fp, StackBase + offset, SEEK_SET);
+		fread(buf, 4, 1, fp);
+		value = u32(buf);
+		if ( value > TextStart && value < (TextStart + TextRange) )
+			return ((value - 5) - TextStart);
+			//return value;
+		else
+			offset = offset - 4;
+	}
+	return 0;
 }
 
 unsigned int BackTrace(FILE *fp, unsigned int TextStart, unsigned int TextRange, unsigned int start, int range)
@@ -92,9 +104,13 @@ unsigned int BackTrace(FILE *fp, unsigned int TextStart, unsigned int TextRange,
 
 void ReadElfHeader(FILE *fp, Elf32_Ehdr *elfhdr, void *fphdr)
 {
+	fphdr = malloc(sizeof(Elf32_Ehdr));
+	fread(fphdr, sizeof(Elf32_Ehdr),1, fp);
+	
 	int i;
 	for ( i = 0; i < 16; i ++ )
 		elfhdr->e_ident[i] = ((Elf32_Ehdr*)fphdr)->e_ident[i];
+	
 	elfhdr->e_ident[6] = ((Elf32_Ehdr*)fphdr)->e_ident[6];
 	elfhdr->e_type = ((Elf32_Ehdr*)fphdr)->e_type;
 	elfhdr->e_machine = ((Elf32_Ehdr*)fphdr)->e_machine;
@@ -110,22 +126,15 @@ void ReadElfHeader(FILE *fp, Elf32_Ehdr *elfhdr, void *fphdr)
 
 int main(int argc, char* argv[])
 {
-	int i;
-	int j;
-	char b[100];
+	int i, j;
 	FILE *fp;
 	void *fphdr;
 	void *shdr;
 	void *phdr;
-	void *symtab;
-	void *dynsymtab;
 	ssize_t size;
 	Elf32_Ehdr elfhdr;
 
 	fp = fopen(argv[2], "r");
-	
-	fphdr = malloc(sizeof(Elf32_Ehdr));
-	size = fread(fphdr, sizeof(Elf32_Ehdr),1, fp);
 	
 	ReadElfHeader(fp, &elfhdr, fphdr);
 	
@@ -157,9 +166,6 @@ int main(int argc, char* argv[])
 	
 	close(fp);
 	fp = fopen(argv[1], "r");
-	
-	fphdr = malloc(sizeof(Elf32_Ehdr));
-	size = fread(fphdr, sizeof(Elf32_Ehdr),1, fp);
 	
 	ReadElfHeader(fp, &elfhdr, fphdr);
 	
@@ -212,8 +218,10 @@ int main(int argc, char* argv[])
 	
 	if ( OffsetToStack_ebp < 0 || OffsetToStack_ebp > StackSize )
 	{
-		puts("ebp ptr error");
-		puts("Stack Overflow detected");
+		unsigned int VulAddr = ForwardTrace(fp, TextStart, TextRange, StackBase, OffsetToStack_esp);
+		printf("Stack Overflow Detected\n");
+		printf("Vul Offset To Binary:    0x%08x\n", VulAddr + TextOffset);
+		printf("Vul Address:             0x%08x\n", VulAddr + TextStart);
 		close(fp);
 		return 0;
 	}
